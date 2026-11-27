@@ -30,6 +30,7 @@ struct KViewApp: App {
         WindowGroup {
             ContentView(state: state)
                 .frame(minWidth: 760, minHeight: 500)
+                .ignoresSafeArea(.all, edges: .top)
                 .onAppear {
                     appDelegate.openURLHandler = { urls in
                         for url in urls {
@@ -141,9 +142,11 @@ struct KViewApp: App {
         DispatchQueue.main.async {
             if let window = NSApp.windows.first {
                 window.appearance = NSAppearance(named: .darkAqua)
+                window.styleMask.insert(.fullSizeContentView)
                 window.titlebarAppearsTransparent = true
-                window.backgroundColor = NSColor(red: 0.102, green: 0.104, blue: 0.114, alpha: 1.0)
+                window.titleVisibility = .hidden
                 window.isMovableByWindowBackground = false
+                window.backgroundColor = NSColor(red: 0.086, green: 0.088, blue: 0.098, alpha: 1.0)
             }
         }
     }
