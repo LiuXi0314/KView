@@ -55,8 +55,72 @@ final class AppState: ObservableObject {
     @Published var statusMessage: String?
     @Published var isDropTargeted: Bool = false
     @Published var collapsedFolders: Set<URL> = []
+    @Published var isWidthPopoverPresented: Bool = false
+    @Published var isFullPreviewWidth: Bool = true {
+        didSet { UserDefaults.standard.set(isFullPreviewWidth, forKey: "kmark.isFullPreviewWidth") }
+    }
+    @Published var previewMaxWidth: Double = 1120 {
+        didSet { UserDefaults.standard.set(previewMaxWidth, forKey: "kmark.previewMaxWidth") }
+    }
 
     private var statusClearTask: Task<Void, Never>?
+
+    init() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "kmark.isFullPreviewWidth") != nil {
+            self.isFullPreviewWidth = defaults.bool(forKey: "kmark.isFullPreviewWidth")
+        }
+        let savedWidth = defaults.double(forKey: "kmark.previewMaxWidth")
+        if savedWidth >= 600 && savedWidth <= 2400 {
+            self.previewMaxWidth = savedWidth
+        }
+    }
+
+    var effectivePreviewMaxWidth: Double {
+        isFullPreviewWidth ? 0 : previewMaxWidth
+    }
+
+    var previewWidthLabel: String {
+        isFullPreviewWidth ? "满宽" : "\(Int(previewMaxWidth))px"
+    }
+
+    func setPreviewWidth(_ px: Double) {
+        isFullPreviewWidth = false
+        previewMaxWidth = min(max(px, 600), 2000)
+    }
+
+    func setFullPreviewWidth(_ enabled: Bool) {
+        isFullPreviewWidth = enabled
+        showToast(enabled ? "预览已设为满宽" : "预览行宽：\(Int(previewMaxWidth))px")
+    }
+
+    func widenPreview() {
+        if isFullPreviewWidth {
+            showToast("当前已是满宽")
+            return
+        }
+        let next = previewMaxWidth + 120
+        if next > 1800 {
+            setFullPreviewWidth(true)
+        } else {
+            previewMaxWidth = next
+            showToast("预览行宽：\(Int(previewMaxWidth))px")
+        }
+    }
+
+    func narrowPreview() {
+        if isFullPreviewWidth {
+            isFullPreviewWidth = false
+            previewMaxWidth = 1440
+        } else {
+            previewMaxWidth = max(600, previewMaxWidth - 120)
+        }
+        showToast("预览行宽：\(Int(previewMaxWidth))px")
+    }
+
+    func toggleFullPreviewWidth() {
+        setFullPreviewWidth(!isFullPreviewWidth)
+    }
 
     var displayFileName: String {
         currentFileURL?.lastPathComponent ?? "未命名.md"

@@ -5,6 +5,7 @@ import WebKit
 struct MarkdownPreviewView: NSViewRepresentable {
     let markdown: String
     let scrollFraction: Double
+    let maxWidth: Double
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -20,6 +21,7 @@ struct MarkdownPreviewView: NSViewRepresentable {
 
         context.coordinator.webView = webView
         context.coordinator.pendingMarkdown = markdown
+        context.coordinator.pendingMaxWidth = maxWidth
         webView.loadHTMLString(Self.htmlTemplate, baseURL: nil)
         return webView
     }
@@ -27,18 +29,22 @@ struct MarkdownPreviewView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.updateMarkdown(markdown)
         context.coordinator.updateScroll(scrollFraction)
+        context.coordinator.updateMaxWidth(maxWidth)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         weak var webView: WKWebView?
         var isLoaded = false
         var pendingMarkdown: String = ""
+        var pendingMaxWidth: Double = 0
         private var lastRenderedMarkdown: String = ""
         private var lastScrollFraction: Double = -1
+        private var lastAppliedMaxWidth: Double = -1
         private var debounceWorkItem: DispatchWorkItem?
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isLoaded = true
+            applyMaxWidthNow(pendingMaxWidth)
             renderNow(pendingMarkdown)
         }
 
@@ -81,6 +87,19 @@ struct MarkdownPreviewView: NSViewRepresentable {
             lastScrollFraction = fraction
             webView.evaluateJavaScript("window.syncScroll(\(fraction));", completionHandler: nil)
         }
+
+        func updateMaxWidth(_ width: Double) {
+            pendingMaxWidth = width
+            guard isLoaded else { return }
+            if abs(width - lastAppliedMaxWidth) < 0.5 { return }
+            applyMaxWidthNow(width)
+        }
+
+        private func applyMaxWidthNow(_ width: Double) {
+            guard isLoaded, let webView = webView else { return }
+            lastAppliedMaxWidth = width
+            webView.evaluateJavaScript("window.setPreviewWidth(\(width));", completionHandler: nil)
+        }
     }
 
     private static let htmlTemplate: String = #"""
@@ -112,9 +131,9 @@ struct MarkdownPreviewView: NSViewRepresentable {
         -webkit-font-smoothing: antialiased;
       }
       #content {
-        max-width: 780px;
+        max-width: none;
         margin: 0 auto;
-        padding: 28px 34px 72px;
+        padding: 28px 36px 72px;
         word-wrap: break-word;
       }
       h1, h2, h3, h4, h5, h6 {
@@ -458,6 +477,12 @@ struct MarkdownPreviewView: NSViewRepresentable {
       window.syncScroll = function(fraction) {
         const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
         window.scrollTo({ top: maxScroll * fraction, behavior: "auto" });
+      };
+
+      window.setPreviewWidth = function(px) {
+        const el = document.getElementById("content");
+        if (!el) return;
+        el.style.maxWidth = (px && px > 0) ? (px + "px") : "none";
       };
     </script>
     </body>

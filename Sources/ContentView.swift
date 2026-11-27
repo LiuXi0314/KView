@@ -126,6 +126,24 @@ struct ContentView: View {
             )
 
             Button {
+                state.isWidthPopoverPresented.toggle()
+            } label: {
+                Image(systemName: "arrow.left.and.right")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(state.isWidthPopoverPresented ? Color(red: 0.478, green: 0.635, blue: 0.969) : Color(white: 0.65))
+                    .frame(width: 26, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(state.isWidthPopoverPresented ? Color.white.opacity(0.08) : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("调整预览行宽 (⌘[ / ⌘] / ⌘0)")
+            .popover(isPresented: $state.isWidthPopoverPresented, arrowEdge: .bottom) {
+                widthControlPopover
+            }
+
+            Button {
                 state.openFilePanel()
             } label: {
                 Image(systemName: "folder")
@@ -188,10 +206,95 @@ struct ContentView: View {
         )
     }
 
+    private var widthControlPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("预览行宽")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text(state.previewWidthLabel)
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(Color(red: 0.478, green: 0.635, blue: 0.969))
+            }
+
+            Toggle("充满剩余空间", isOn: Binding(
+                get: { state.isFullPreviewWidth },
+                set: { state.setFullPreviewWidth($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .font(.system(size: 12))
+
+            VStack(spacing: 4) {
+                Slider(
+                    value: Binding(
+                        get: { state.previewMaxWidth },
+                        set: { state.setPreviewWidth($0) }
+                    ),
+                    in: 600...2000,
+                    step: 20
+                )
+                .tint(Color(red: 0.478, green: 0.635, blue: 0.969))
+
+                HStack {
+                    Text("600px")
+                    Spacer()
+                    Text("2000px")
+                }
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Color(white: 0.48))
+            }
+            .opacity(state.isFullPreviewWidth ? 0.45 : 1.0)
+
+            HStack(spacing: 6) {
+                presetWidthButton(label: "窄", px: 760)
+                presetWidthButton(label: "标准", px: 960)
+                presetWidthButton(label: "宽", px: 1280)
+                Button {
+                    state.setFullPreviewWidth(true)
+                } label: {
+                    Text("满宽")
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(state.isFullPreviewWidth ? Color(red: 0.478, green: 0.635, blue: 0.969).opacity(0.25) : Color.white.opacity(0.07))
+                        )
+                        .foregroundStyle(state.isFullPreviewWidth ? Color(red: 0.65, green: 0.78, blue: 1.0) : Color(white: 0.80))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .frame(width: 248)
+        .preferredColorScheme(.dark)
+    }
+
+    private func presetWidthButton(label: String, px: Double) -> some View {
+        let active = !state.isFullPreviewWidth && abs(state.previewMaxWidth - px) < 1
+        return Button {
+            state.setPreviewWidth(px)
+        } label: {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(active ? Color(red: 0.478, green: 0.635, blue: 0.969).opacity(0.25) : Color.white.opacity(0.07))
+                )
+                .foregroundStyle(active ? Color(red: 0.65, green: 0.78, blue: 1.0) : Color(white: 0.80))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var previewPane: some View {
         MarkdownPreviewView(
             markdown: state.text,
-            scrollFraction: state.scrollFraction
+            scrollFraction: state.scrollFraction,
+            maxWidth: state.effectivePreviewMaxWidth
         )
     }
 
@@ -211,6 +314,15 @@ struct ContentView: View {
             }
 
             Spacer()
+
+            Button {
+                state.isWidthPopoverPresented.toggle()
+            } label: {
+                Text("宽 \(state.previewWidthLabel)")
+                    .foregroundStyle(Color(white: 0.60))
+            }
+            .buttonStyle(.plain)
+            .help("点击调整预览行宽")
 
             Text("\(state.lineCount) 行")
             Text("\(state.wordCount) 字")

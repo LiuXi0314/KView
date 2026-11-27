@@ -77,6 +77,17 @@ struct KMarkApp: App {
 
                 Button("仅预览模式") { state.viewMode = .previewOnly }
                     .keyboardShortcut("3", modifiers: .command)
+
+                Divider()
+
+                Button("加宽预览行宽") { state.widenPreview() }
+                    .keyboardShortcut("]", modifiers: .command)
+
+                Button("收窄预览行宽") { state.narrowPreview() }
+                    .keyboardShortcut("[", modifiers: .command)
+
+                Button("切换满宽预览") { state.toggleFullPreviewWidth() }
+                    .keyboardShortcut("0", modifiers: .command)
             }
 
             CommandMenu("格式") {
