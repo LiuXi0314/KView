@@ -38,11 +38,16 @@ struct KMarkApp: App {
                 }
         }
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1120, height: 720)
+        .defaultSize(width: 1180, height: 740)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("新建文档") { state.newDocument() }
+                Button("新建空文件") { state.newDocument() }
                     .keyboardShortcut("n", modifiers: .command)
+
+                Button("在目录中新建空文件...") { state.newEmptyFileInFolder() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Divider()
 
                 Button("打开文件...") { state.openFilePanel() }
                     .keyboardShortcut("o", modifiers: .command)
@@ -91,6 +96,11 @@ struct KMarkApp: App {
             }
 
             CommandMenu("格式") {
+                Button("格式化代码 / 文档") { state.formatCurrentCode() }
+                    .keyboardShortcut("f", modifiers: [.shift, .option])
+
+                Divider()
+
                 Button("加粗") { state.triggerFormat(.bold) }
                     .keyboardShortcut("b", modifiers: .command)
 

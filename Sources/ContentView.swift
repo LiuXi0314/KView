@@ -59,7 +59,7 @@ struct ContentView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 9) {
             // Space for native macOS traffic lights
             Spacer().frame(width: 68)
 
@@ -80,6 +80,17 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .help("显示/隐藏目录 (⌘\\)")
 
+            Button {
+                state.newDocument()
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color(white: 0.65))
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help("新建空文件 (⌘N)")
+
             Spacer()
 
             HStack(spacing: 6) {
@@ -88,7 +99,7 @@ struct ContentView: View {
                     .foregroundStyle(Color(white: 0.85))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if state.isDirty {
+                if state.isDirty && !state.currentFileKind.isImage {
                     Circle()
                         .fill(Color(red: 0.478, green: 0.635, blue: 0.969))
                         .frame(width: 6, height: 6)
@@ -98,49 +109,62 @@ struct ContentView: View {
 
             Spacer()
 
-            // View mode switcher
-            HStack(spacing: 2) {
-                ForEach(ViewMode.allCases) { mode in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            state.viewMode = mode
+            if !state.currentFileKind.isImage {
+                // View mode switcher
+                HStack(spacing: 2) {
+                    ForEach(ViewMode.allCases) { mode in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                state.viewMode = mode
+                            }
+                        } label: {
+                            Image(systemName: mode.symbolName)
+                                .font(.system(size: 12))
+                                .foregroundStyle(state.viewMode == mode ? Color.white : Color(white: 0.52))
+                                .frame(width: 28, height: 22)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(state.viewMode == mode ? Color.white.opacity(0.12) : Color.clear)
+                                )
                         }
-                    } label: {
-                        Image(systemName: mode.symbolName)
-                            .font(.system(size: 12))
-                            .foregroundStyle(state.viewMode == mode ? Color.white : Color(white: 0.52))
-                            .frame(width: 28, height: 22)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(state.viewMode == mode ? Color.white.opacity(0.12) : Color.clear)
-                            )
+                        .buttonStyle(.plain)
+                        .help(mode.rawValue)
                     }
-                    .buttonStyle(.plain)
-                    .help(mode.rawValue)
                 }
-            }
-            .padding(2)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(Color.white.opacity(0.04))
-            )
+                .padding(2)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.white.opacity(0.04))
+                )
 
-            Button {
-                state.isWidthPopoverPresented.toggle()
-            } label: {
-                Image(systemName: "arrow.left.and.right")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(state.isWidthPopoverPresented ? Color(red: 0.478, green: 0.635, blue: 0.969) : Color(white: 0.65))
-                    .frame(width: 26, height: 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(state.isWidthPopoverPresented ? Color.white.opacity(0.08) : Color.clear)
-                    )
-            }
-            .buttonStyle(.plain)
-            .help("调整预览行宽 (⌘[ / ⌘] / ⌘0)")
-            .popover(isPresented: $state.isWidthPopoverPresented, arrowEdge: .bottom) {
-                widthControlPopover
+                Button {
+                    state.formatCurrentCode()
+                } label: {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(white: 0.68))
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(.plain)
+                .help("格式化代码 / 文档 (⇧⌥F)")
+
+                Button {
+                    state.isWidthPopoverPresented.toggle()
+                } label: {
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(state.isWidthPopoverPresented ? Color(red: 0.478, green: 0.635, blue: 0.969) : Color(white: 0.65))
+                        .frame(width: 26, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(state.isWidthPopoverPresented ? Color.white.opacity(0.08) : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("调整预览行宽 (⌘[ / ⌘] / ⌘0)")
+                .popover(isPresented: $state.isWidthPopoverPresented, arrowEdge: .bottom) {
+                    widthControlPopover
+                }
             }
 
             Button {
@@ -154,16 +178,18 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .help("打开文件 (⌘O)")
 
-            Button {
-                state.saveDocument()
-            } label: {
-                Image(systemName: "square.and.arrow.down")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(state.isDirty ? Color(red: 0.478, green: 0.635, blue: 0.969) : Color(white: 0.65))
-                    .frame(width: 26, height: 24)
+            if !state.currentFileKind.isImage {
+                Button {
+                    state.saveDocument()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(state.isDirty ? Color(red: 0.478, green: 0.635, blue: 0.969) : Color(white: 0.65))
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(.plain)
+                .help("保存 (⌘S)")
             }
-            .buttonStyle(.plain)
-            .help("保存 (⌘S)")
         }
         .padding(.trailing, 12)
         .frame(height: 38)
@@ -172,17 +198,21 @@ struct ContentView: View {
 
     @ViewBuilder
     private var workspaceArea: some View {
-        switch state.viewMode {
-        case .editorOnly:
-            editorPane
-        case .previewOnly:
-            previewPane
-        case .split:
-            HSplitView {
+        if state.currentFileKind.isImage, let url = state.currentFileURL {
+            ImagePreviewView(url: url, state: state)
+        } else {
+            switch state.viewMode {
+            case .editorOnly:
                 editorPane
-                    .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
+            case .previewOnly:
                 previewPane
-                    .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
+            case .split:
+                HSplitView {
+                    editorPane
+                        .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
+                    previewPane
+                        .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
     }
@@ -293,6 +323,7 @@ struct ContentView: View {
     private var previewPane: some View {
         MarkdownPreviewView(
             markdown: state.text,
+            fileKind: state.currentFileKind,
             scrollFraction: state.scrollFraction,
             maxWidth: state.effectivePreviewMaxWidth
         )
@@ -315,18 +346,23 @@ struct ContentView: View {
 
             Spacer()
 
-            Button {
-                state.isWidthPopoverPresented.toggle()
-            } label: {
-                Text("宽 \(state.previewWidthLabel)")
-                    .foregroundStyle(Color(white: 0.60))
-            }
-            .buttonStyle(.plain)
-            .help("点击调整预览行宽")
+            Text(state.currentFileKind.displayLabel)
+                .foregroundStyle(Color(red: 0.478, green: 0.635, blue: 0.969).opacity(0.85))
 
-            Text("\(state.lineCount) 行")
-            Text("\(state.wordCount) 字")
-            Text("\(state.characterCount) 字符")
+            if !state.currentFileKind.isImage {
+                Button {
+                    state.isWidthPopoverPresented.toggle()
+                } label: {
+                    Text("宽 \(state.previewWidthLabel)")
+                        .foregroundStyle(Color(white: 0.60))
+                }
+                .buttonStyle(.plain)
+                .help("点击调整预览行宽")
+
+                Text("\(state.lineCount) 行")
+                Text("\(state.wordCount) 字")
+                Text("\(state.characterCount) 字符")
+            }
         }
         .font(.system(size: 11, design: .monospaced))
         .foregroundStyle(Color(white: 0.50))

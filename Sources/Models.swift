@@ -27,6 +27,64 @@ enum EditorFormatAction: Equatable {
     case heading
 }
 
+enum FileKind: Equatable {
+    case markdown
+    case code(language: String)
+    case image
+
+    var displayLabel: String {
+        switch self {
+        case .markdown: return "Markdown"
+        case .code(let lang): return lang.isEmpty ? "纯文本" : lang.uppercased()
+        case .image: return "图片"
+        }
+    }
+
+    var isImage: Bool {
+        if case .image = self { return true }
+        return false
+    }
+
+    static func detect(for url: URL?) -> FileKind {
+        guard let url = url else { return .markdown }
+        let ext = url.pathExtension.lowercased()
+        let name = url.lastPathComponent.lowercased()
+
+        if imageExtensions.contains(ext) {
+            return .image
+        }
+        if markdownExtensions.contains(ext) {
+            return .markdown
+        }
+        if ext.isEmpty {
+            if name == "dockerfile" { return .code(language: "bash") }
+            if name == "makefile" { return .code(language: "bash") }
+            return .code(language: "text")
+        }
+        return .code(language: ext)
+    }
+
+    static let markdownExtensions: Set<String> = [
+        "md", "markdown", "mdown", "mkd", "mdx"
+    ]
+
+    static let imageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tiff", "tif", "heic", "ico"
+    ]
+
+    static let codeExtensions: Set<String> = [
+        "txt", "log", "json", "yaml", "yml", "toml", "ini", "conf", "env", "plist",
+        "swift", "py", "js", "jsx", "ts", "tsx", "mjs", "cjs",
+        "html", "htm", "css", "scss", "less", "xml",
+        "java", "kt", "kts", "go", "rs", "c", "cc", "cpp", "cxx", "h", "hpp", "m", "mm",
+        "rb", "php", "sql", "sh", "bash", "zsh", "fish", "command", "gradle", "cmake", "vue", "svelte"
+    ]
+
+    static let allowedExtensionlessNames: Set<String> = [
+        "makefile", "dockerfile", "podfile", "gemfile", "rakefile", "license", "readme", "procfile", ".gitignore", ".env"
+    ]
+}
+
 struct FileNode: Identifiable, Hashable {
     let id: URL
     let url: URL
@@ -34,9 +92,16 @@ struct FileNode: Identifiable, Hashable {
     let isDirectory: Bool
     var children: [FileNode]?
 
+    var fileKind: FileKind {
+        FileKind.detect(for: url)
+    }
+
     var isMarkdown: Bool {
-        let ext = url.pathExtension.lowercased()
-        return ["md", "markdown", "mdown", "mkd", "mdx"].contains(ext)
+        fileKind == .markdown
+    }
+
+    var isImage: Bool {
+        fileKind.isImage
     }
 }
 
@@ -44,6 +109,7 @@ struct FileNode: Identifiable, Hashable {
 final class AppState: ObservableObject {
     @Published var text: String = AppState.welcomeMarkdown
     @Published var currentFileURL: URL?
+    @Published var currentFileKind: FileKind = .markdown
     @Published var rootFolderURL: URL?
     @Published var sidebarNodes: [FileNode] = []
     @Published var isSidebarVisible: Bool = true
@@ -56,6 +122,8 @@ final class AppState: ObservableObject {
     @Published var isDropTargeted: Bool = false
     @Published var collapsedFolders: Set<URL> = []
     @Published var isWidthPopoverPresented: Bool = false
+    @Published var imageZoom: Double = 1.0
+    @Published var imageFitToWindow: Bool = true
     @Published var isFullPreviewWidth: Bool = true {
         didSet { UserDefaults.standard.set(isFullPreviewWidth, forKey: "kmark.isFullPreviewWidth") }
     }
@@ -123,7 +191,7 @@ final class AppState: ObservableObject {
     }
 
     var displayFileName: String {
-        currentFileURL?.lastPathComponent ?? "未命名.md"
+        currentFileURL?.lastPathComponent ?? "未命名"
     }
 
     var wordCount: Int {
@@ -165,6 +233,24 @@ final class AppState: ObservableObject {
         formatRequestID = UUID()
     }
 
+    func formatCurrentCode() {
+        guard !currentFileKind.isImage else { return }
+        let lang: String
+        switch currentFileKind {
+        case .markdown: lang = "md"
+        case .code(let l): lang = l
+        case .image: return
+        }
+        let result = CodeFormatter.format(text, language: lang)
+        if result.formatted != text {
+            text = result.formatted
+            isDirty = true
+            showToast("已格式化 \(result.label)")
+        } else {
+            showToast("格式已整齐")
+        }
+    }
+
     func showToast(_ message: String) {
         statusMessage = message
         statusClearTask?.cancel()
@@ -177,7 +263,7 @@ final class AppState: ObservableObject {
     }
 
     func confirmDiscardIfNeeded() -> Bool {
-        guard isDirty else { return true }
+        guard isDirty && !currentFileKind.isImage else { return true }
         let alert = NSAlert()
         alert.messageText = "当前文档有未保存的更改"
         alert.informativeText = "是否先保存「\(displayFileName)」再继续？"
@@ -196,13 +282,46 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 新建纯空白未命名文件
     func newDocument() {
         guard confirmDiscardIfNeeded() else { return }
         currentFileURL = nil
-        text = "# 未命名文档\n\n"
+        currentFileKind = .markdown
+        text = ""
         isDirty = false
         scrollFraction = 0
-        showToast("已新建文档")
+        showToast("已新建空文件")
+    }
+
+    /// 在当前目录（或指定位置）新建本地空文件
+    func newEmptyFileInFolder() {
+        guard confirmDiscardIfNeeded() else { return }
+        let panel = NSSavePanel()
+        panel.title = "新建空文件"
+        panel.message = "输入文件名（支持 .md / .swift / .json / .py 等任意后缀）"
+        panel.nameFieldStringValue = "untitled.md"
+        panel.canCreateDirectories = true
+        if let root = rootFolderURL {
+            panel.directoryURL = root
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try "".write(to: url, atomically: true, encoding: .utf8)
+                currentFileURL = url
+                currentFileKind = FileKind.detect(for: url)
+                text = ""
+                isDirty = false
+                scrollFraction = 0
+                let parent = url.deletingLastPathComponent()
+                if rootFolderURL == nil {
+                    rootFolderURL = parent
+                }
+                refreshSidebar()
+                showToast("已创建空文件 \(url.lastPathComponent)")
+            } catch {
+                showToast("创建失败：\(error.localizedDescription)")
+            }
+        }
     }
 
     func openFilePanel() {
@@ -210,7 +329,7 @@ final class AppState: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "选择 Markdown 文件或文件夹"
+        panel.message = "选择 Markdown、代码、图片文件或文件夹"
         if panel.runModal() == .OK, let url = panel.url {
             handleOpen(url: url)
         }
@@ -239,9 +358,27 @@ final class AppState: ObservableObject {
 
     func openFile(url: URL) {
         guard confirmDiscardIfNeeded() else { return }
+        let kind = FileKind.detect(for: url)
+
+        if kind.isImage {
+            currentFileURL = url
+            currentFileKind = .image
+            isDirty = false
+            imageZoom = 1.0
+            imageFitToWindow = true
+            let parent = url.deletingLastPathComponent()
+            if rootFolderURL == nil || !url.path.hasPrefix(rootFolderURL!.path) {
+                rootFolderURL = parent
+                refreshSidebar()
+            }
+            showToast("预览图片 \(url.lastPathComponent)")
+            return
+        }
+
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
             currentFileURL = url
+            currentFileKind = kind
             text = content
             isDirty = false
             scrollFraction = 0
@@ -265,10 +402,12 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func saveDocument() -> Bool {
+        guard !currentFileKind.isImage else { return true }
         if let url = currentFileURL {
             do {
                 try text.write(to: url, atomically: true, encoding: .utf8)
                 isDirty = false
+                currentFileKind = FileKind.detect(for: url)
                 showToast("已保存 \(url.lastPathComponent)")
                 return true
             } catch {
@@ -282,11 +421,16 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func saveDocumentAs() -> Bool {
+        guard !currentFileKind.isImage else { return true }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = currentFileURL?.lastPathComponent ?? "Untitled.md"
         panel.canCreateDirectories = true
+        if let root = rootFolderURL {
+            panel.directoryURL = root
+        }
         if panel.runModal() == .OK, let url = panel.url {
             currentFileURL = url
+            currentFileKind = FileKind.detect(for: url)
             let ok = saveDocument()
             if ok {
                 let parent = url.deletingLastPathComponent()
@@ -309,14 +453,10 @@ final class AppState: ObservableObject {
     }
 
     private func buildTree(at directory: URL, depth: Int) -> [FileNode] {
-        guard depth < 5 else { return [] }
+        guard depth < 6 else { return [] }
         let fm = FileManager.default
         let ignoredNames: Set<String> = [
-            ".git", ".build", ".swiftpm", "node_modules", ".DS_Store", "DerivedData", "Pods"
-        ]
-        let allowedExtensions: Set<String> = [
-            "md", "markdown", "mdown", "mkd", "mdx", "txt",
-            "json", "yaml", "yml", "swift", "py", "js", "ts", "html", "css"
+            ".git", ".build", ".swiftpm", "node_modules", ".DS_Store", "DerivedData", "Pods", "dist", "build", "__pycache__", ".venv"
         ]
 
         guard let items = try? fm.contentsOfDirectory(
@@ -332,7 +472,7 @@ final class AppState: ObservableObject {
 
         for item in items {
             let name = item.lastPathComponent
-            if ignoredNames.contains(name) { continue }
+            if ignoredNames.contains(name) || name.hasSuffix(".app") { continue }
             let resourceValues = try? item.resourceValues(forKeys: [.isDirectoryKey])
             let isDir = resourceValues?.isDirectory ?? false
 
@@ -343,7 +483,12 @@ final class AppState: ObservableObject {
                 }
             } else {
                 let ext = item.pathExtension.lowercased()
-                if allowedExtensions.contains(ext) {
+                let lowerName = name.lowercased()
+                let isSupported = FileKind.markdownExtensions.contains(ext)
+                    || FileKind.codeExtensions.contains(ext)
+                    || FileKind.imageExtensions.contains(ext)
+                    || FileKind.allowedExtensionlessNames.contains(lowerName)
+                if isSupported {
                     files.append(FileNode(id: item, url: item, name: name, isDirectory: false, children: nil))
                 }
             }
@@ -357,50 +502,55 @@ final class AppState: ObservableObject {
     static let welcomeMarkdown = """
     # KMark
 
-    一款专注、轻量的 **macOS 深色模式 Markdown 编辑器与实时预览工具**。
+    极简深色模式 **macOS 原生 Markdown、代码与图片预览编辑器**。
 
     ## 常用快捷键
 
     | 操作 | 快捷键 | 说明 |
     | :--- | :--- | :--- |
-    | 切换侧边目录 | `⌘ \\` | 折叠或展开左侧文件树 |
-    | 仅编辑 / 双栏 / 仅预览 | `⌘ 1` / `⌘ 2` / `⌘ 3` | 一键切换视图布局 |
-    | 打开 / 保存 | `⌘ O` / `⌘ S` | 支持直接拖拽文件或文件夹到窗口 |
-    | 加粗 / 斜体 / 行内代码 | `⌘ B` / `⌘ I` / `⌘ E` | 快速包裹选中文本 |
+    | 新建空文件 / 目录中新建 | `⌘ N` / `⇧⌘ N` | 快速创建空白文件 |
+    | 代码格式化 | `⇧⌥ F` | 支持 JSON、HTML/XML、Swift、JS/TS、CSS、Markdown 等 |
+    | 切换左侧目录 | `⌘ \\` | 支持 Markdown、各类代码与图片文件 |
+    | 调节预览行宽 | `⌘ [` / `⌘ ]` / `⌘ 0` | 收窄 / 加宽 / 一键满宽 |
+
+    ## UML 类图预览（离线原生渲染）
+
+    ```mermaid
+    classDiagram
+        class Document {
+            +String title
+            +URL filePath
+            +open() Bool
+            +save() Bool
+        }
+        class MarkdownDoc {
+            +String rawText
+            +renderHTML() String
+        }
+        class CodeDoc {
+            +String language
+            +format() String
+        }
+        class ImageDoc {
+            +Double zoom
+            +fitToWindow() Void
+        }
+        Document <|-- MarkdownDoc : extends
+        Document <|-- CodeDoc : extends
+        Document <|-- ImageDoc : extends
+    ```
 
     ## 代码块语法高亮
 
     ```swift
     import SwiftUI
 
-    struct NoteCard: View {
+    struct KMarkPreview: View {
         let title: String
-        let wordCount: Int
-
         var body: some View {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.headline)
-                Text("\\(wordCount) 字").foregroundStyle(.secondary)
-            }
-            .padding()
+            Text(title).font(.headline)
         }
     }
     ```
-
-    ```python
-    def render_markdown(source: str) -> str:
-        # 轻量实时解析，支持深色排版与同步滚动
-        lines = [line.strip() for line in source.splitlines()]
-        return "\\n".join(lines)
-    ```
-
-    ## 待办与引用
-
-    > 保持界面克制，把注意力留给文字本身。
-
-    - [x] 纯深色护眼配色
-    - [x] 左右分栏实时预览与同步滚动
-    - [x] 拖拽本地 `.md` 文件或文件夹直接打开
-    - [ ] 开始写你的第一篇笔记
     """
 }

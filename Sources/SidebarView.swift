@@ -5,7 +5,7 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Text(state.rootFolderURL?.lastPathComponent ?? "文件目录")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(Color(white: 0.72))
@@ -13,6 +13,16 @@ struct SidebarView: View {
                     .truncationMode(.middle)
 
                 Spacer()
+
+                Button {
+                    state.newEmptyFileInFolder()
+                } label: {
+                    Image(systemName: "doc.badge.plus")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(white: 0.62))
+                }
+                .buttonStyle(.plain)
+                .help("在目录中新建空文件 (⇧⌘N)")
 
                 Button {
                     state.openFolderPanel()
@@ -48,7 +58,7 @@ struct SidebarView: View {
                     Image(systemName: "folder")
                         .font(.system(size: 24, weight: .light))
                         .foregroundStyle(Color(white: 0.38))
-                    Text(state.rootFolderURL == nil ? "未打开文件夹" : "暂无可预览文本文件")
+                    Text(state.rootFolderURL == nil ? "未打开文件夹" : "暂无可预览文件")
                         .font(.system(size: 12))
                         .foregroundStyle(Color(white: 0.52))
                     Button("选择文件夹") {
@@ -92,6 +102,25 @@ private struct SidebarNodeRow: View {
 
     var isSelected: Bool {
         state.currentFileURL == node.url
+    }
+
+    private var iconName: String {
+        switch node.fileKind {
+        case .markdown: return "doc.richtext"
+        case .image: return "photo"
+        case .code: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    private var iconColor: Color {
+        if isSelected {
+            return Color(red: 0.478, green: 0.635, blue: 0.969)
+        }
+        switch node.fileKind {
+        case .markdown: return Color(white: 0.54)
+        case .image: return Color(red: 0.59, green: 0.76, blue: 0.47).opacity(0.85)
+        case .code: return Color(red: 0.88, green: 0.73, blue: 0.48).opacity(0.82)
+        }
     }
 
     var body: some View {
@@ -139,13 +168,10 @@ private struct SidebarNodeRow: View {
                 state.openFile(url: node.url)
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: node.isMarkdown ? "doc.richtext" : "doc.text")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(
-                            isSelected
-                                ? Color(red: 0.478, green: 0.635, blue: 0.969)
-                                : Color(white: 0.52)
-                        )
+                    Image(systemName: iconName)
+                        .font(.system(size: 11))
+                        .foregroundStyle(iconColor)
+                        .frame(width: 14)
                     Text(node.name)
                         .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
                         .foregroundStyle(isSelected ? Color.white : Color(white: 0.76))
