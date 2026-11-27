@@ -164,10 +164,10 @@ final class AppState: ObservableObject {
     @Published var collapsedFolders: Set<URL> = []
     @Published var isWidthPopoverPresented: Bool = false
     @Published var isFullPreviewWidth: Bool = true {
-        didSet { UserDefaults.standard.set(isFullPreviewWidth, forKey: "kmark.isFullPreviewWidth") }
+        didSet { UserDefaults.standard.set(isFullPreviewWidth, forKey: "kview.isFullPreviewWidth") }
     }
     @Published var previewMaxWidth: Double = 1120 {
-        didSet { UserDefaults.standard.set(previewMaxWidth, forKey: "kmark.previewMaxWidth") }
+        didSet { UserDefaults.standard.set(previewMaxWidth, forKey: "kview.previewMaxWidth") }
     }
 
     private var statusClearTask: Task<Void, Never>?
@@ -178,10 +178,10 @@ final class AppState: ObservableObject {
         self.activeTabID = initial.id
 
         let defaults = UserDefaults.standard
-        if defaults.object(forKey: "kmark.isFullPreviewWidth") != nil {
-            self.isFullPreviewWidth = defaults.bool(forKey: "kmark.isFullPreviewWidth")
+        if defaults.object(forKey: "kview.isFullPreviewWidth") != nil {
+            self.isFullPreviewWidth = defaults.bool(forKey: "kview.isFullPreviewWidth")
         }
-        let savedWidth = defaults.double(forKey: "kmark.previewMaxWidth")
+        let savedWidth = defaults.double(forKey: "kview.previewMaxWidth")
         if savedWidth >= 600 && savedWidth <= 2400 {
             self.previewMaxWidth = savedWidth
         }
@@ -666,7 +666,7 @@ final class AppState: ObservableObject {
     }
 
     static let welcomeMarkdown = """
-    # KMark
+    # KView
 
     极简深色模式 **macOS 原生 Markdown、代码与图片预览编辑器**。
 
