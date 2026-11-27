@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    var openURLHandler: ((URL) -> Void)?
+    var openURLHandler: (([URL]) -> Void)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.appearance = NSAppearance(named: .darkAqua)
@@ -11,8 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        if let first = urls.first {
-            openURLHandler?(first)
+        if !urls.isEmpty {
+            openURLHandler?(urls)
         }
     }
 
@@ -31,8 +31,10 @@ struct KMarkApp: App {
             ContentView(state: state)
                 .frame(minWidth: 760, minHeight: 500)
                 .onAppear {
-                    appDelegate.openURLHandler = { url in
-                        state.handleOpen(url: url)
+                    appDelegate.openURLHandler = { urls in
+                        for url in urls {
+                            state.handleOpen(url: url)
+                        }
                     }
                     configureWindowAppearance()
                 }
@@ -41,6 +43,9 @@ struct KMarkApp: App {
         .defaultSize(width: 1180, height: 740)
         .commands {
             CommandGroup(replacing: .newItem) {
+                Button("新建空标签页") { state.newDocument() }
+                    .keyboardShortcut("t", modifiers: .command)
+
                 Button("新建空文件") { state.newDocument() }
                     .keyboardShortcut("n", modifiers: .command)
 
@@ -62,6 +67,11 @@ struct KMarkApp: App {
 
                 Button("另存为...") { state.saveDocumentAs() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("关闭当前标签页") { state.closeActiveTab() }
+                    .keyboardShortcut("w", modifiers: .command)
             }
 
             CommandMenu("视图") {
@@ -71,6 +81,14 @@ struct KMarkApp: App {
                     }
                 }
                 .keyboardShortcut("\\", modifiers: .command)
+
+                Divider()
+
+                Button("上一个标签页") { state.selectPreviousTab() }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+
+                Button("下一个标签页") { state.selectNextTab() }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
 
                 Divider()
 

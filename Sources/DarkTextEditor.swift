@@ -41,6 +41,8 @@ final class DroppableTextView: NSTextView {
 
 struct DarkTextEditor: NSViewRepresentable {
     @Binding var text: String
+    var tabID: UUID
+    var fileKind: FileKind
     var formatAction: EditorFormatAction?
     var formatRequestID: UUID
     var onScroll: (Double) -> Void
@@ -57,7 +59,7 @@ struct DarkTextEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = NSColor(red: 0.118, green: 0.118, blue: 0.125, alpha: 1.0) // #1E1E20
+        scrollView.backgroundColor = NSColor(red: 0.106, green: 0.108, blue: 0.118, alpha: 1.0) // #1B1B1E
 
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
@@ -82,36 +84,31 @@ struct DarkTextEditor: NSViewRepresentable {
         textView.isContinuousSpellCheckingEnabled = false
 
         textView.drawsBackground = true
-        textView.backgroundColor = NSColor(red: 0.118, green: 0.118, blue: 0.125, alpha: 1.0)
-        textView.insertionPointColor = NSColor(red: 0.478, green: 0.635, blue: 0.969, alpha: 1.0) // #7AA2F7
+        textView.backgroundColor = NSColor(red: 0.106, green: 0.108, blue: 0.118, alpha: 1.0)
+        textView.insertionPointColor = NSColor(red: 0.478, green: 0.635, blue: 0.969, alpha: 1.0)
         textView.selectedTextAttributes = [
             .backgroundColor: NSColor(red: 0.180, green: 0.235, blue: 0.349, alpha: 1.0)
         ]
 
-        textView.textContainerInset = NSSize(width: 26, height: 24)
+        textView.textContainerInset = NSSize(width: 28, height: 24)
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
 
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineHeightMultiple = 1.55
-        paragraphStyle.paragraphSpacing = 4
-
-        let typingAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular),
-            .foregroundColor: NSColor(red: 0.84, green: 0.85, blue: 0.88, alpha: 1.0),
-            .paragraphStyle: paragraphStyle
-        ]
-        textView.typingAttributes = typingAttrs
+        textView.typingAttributes = SyntaxHighlighter.defaultTypingAttributes()
         textView.string = text
-        textView.textStorage?.setAttributes(typingAttrs, range: NSRange(location: 0, length: (text as NSString).length))
+        if let ts = textView.textStorage {
+            SyntaxHighlighter.apply(to: ts, fileKind: fileKind)
+        }
 
         scrollView.documentView = textView
         scrollView.contentView.postsBoundsChangedNotifications = true
         context.coordinator.textView = textView
         context.coordinator.scrollView = scrollView
+        context.coordinator.lastTabID = tabID
+        context.coordinator.lastFileKind = fileKind
 
         NotificationCenter.default.addObserver(
             context.coordinator,
@@ -127,21 +124,33 @@ struct DarkTextEditor: NSViewRepresentable {
         context.coordinator.parent = self
         guard let textView = context.coordinator.textView else { return }
 
-        if textView.string != text {
-            let selected = textView.selectedRange()
+        let tabChanged = context.coordinator.lastTabID != tabID
+        let kindChanged = context.coordinator.lastFileKind != fileKind
+        let textChanged = textView.string != text
+
+        if tabChanged || textChanged {
+            let selected = tabChanged ? NSRange(location: 0, length: 0) : textView.selectedRange()
+            context.coordinator.isProgrammaticUpdate = true
             textView.string = text
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.lineHeightMultiple = 1.55
-            paragraphStyle.paragraphSpacing = 4
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular),
-                .foregroundColor: NSColor(red: 0.84, green: 0.85, blue: 0.88, alpha: 1.0),
-                .paragraphStyle: paragraphStyle
-            ]
-            textView.textStorage?.setAttributes(attrs, range: NSRange(location: 0, length: (text as NSString).length))
+            textView.typingAttributes = SyntaxHighlighter.defaultTypingAttributes()
+            if let ts = textView.textStorage {
+                SyntaxHighlighter.apply(to: ts, fileKind: fileKind)
+            }
             let safeLoc = min(selected.location, (text as NSString).length)
             textView.setSelectedRange(NSRange(location: safeLoc, length: 0))
+            if tabChanged {
+                scrollView.contentView.scroll(to: .zero)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
+            context.coordinator.isProgrammaticUpdate = false
+        } else if kindChanged {
+            if let ts = textView.textStorage {
+                SyntaxHighlighter.apply(to: ts, fileKind: fileKind)
+            }
         }
+
+        context.coordinator.lastTabID = tabID
+        context.coordinator.lastFileKind = fileKind
 
         if let action = formatAction, context.coordinator.lastFormatID != formatRequestID {
             context.coordinator.lastFormatID = formatRequestID
@@ -154,6 +163,10 @@ struct DarkTextEditor: NSViewRepresentable {
         weak var textView: DroppableTextView?
         weak var scrollView: NSScrollView?
         var lastFormatID: UUID?
+        var lastTabID: UUID?
+        var lastFileKind: FileKind?
+        var isProgrammaticUpdate = false
+        private var highlightWorkItem: DispatchWorkItem?
 
         init(_ parent: DarkTextEditor) {
             self.parent = parent
@@ -164,12 +177,31 @@ struct DarkTextEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = textView else { return }
+            guard !isProgrammaticUpdate, let textView = textView else { return }
             parent.text = textView.string
+            scheduleHighlight()
+        }
+
+        private func scheduleHighlight() {
+            guard parent.fileKind.isCode else { return }
+            highlightWorkItem?.cancel()
+            let kind = parent.fileKind
+            let item = DispatchWorkItem { [weak self] in
+                guard let textView = self?.textView, let ts = textView.textStorage else { return }
+                let selected = textView.selectedRange()
+                SyntaxHighlighter.apply(to: ts, fileKind: kind)
+                let maxLoc = (textView.string as NSString).length
+                textView.setSelectedRange(NSRange(location: min(selected.location, maxLoc), length: min(selected.length, max(0, maxLoc - selected.location))))
+                textView.typingAttributes = SyntaxHighlighter.defaultTypingAttributes()
+            }
+            highlightWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: item)
         }
 
         @objc func boundsDidChange(_ notification: Notification) {
-            guard let scrollView = scrollView, let docView = scrollView.documentView else { return }
+            guard !isProgrammaticUpdate,
+                  let scrollView = scrollView,
+                  let docView = scrollView.documentView else { return }
             let visibleHeight = scrollView.contentView.bounds.height
             let totalHeight = docView.bounds.height
             let maxOffset = max(totalHeight - visibleHeight, 1)

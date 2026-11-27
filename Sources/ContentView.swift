@@ -19,8 +19,17 @@ struct ContentView: View {
                             .frame(minWidth: 180, idealWidth: 220, maxWidth: 320)
                     }
 
-                    workspaceArea
-                        .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 0) {
+                        tabBar
+
+                        Rectangle()
+                            .fill(Color(white: 0.14))
+                            .frame(height: 1)
+
+                        workspaceArea
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
                 }
 
                 Rectangle()
@@ -43,7 +52,7 @@ struct ContentView: View {
                             Image(systemName: "arrow.down.doc")
                                 .font(.system(size: 30, weight: .light))
                                 .foregroundStyle(Color(red: 0.478, green: 0.635, blue: 0.969))
-                            Text("松开以打开文件或文件夹")
+                            Text("松开以在新标签页打开文件或文件夹")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(.white)
                         }
@@ -57,6 +66,8 @@ struct ContentView: View {
             handleDropProviders(providers)
         }
     }
+
+    // MARK: - Top Chrome
 
     private var topBar: some View {
         HStack(spacing: 9) {
@@ -89,7 +100,7 @@ struct ContentView: View {
                     .frame(width: 26, height: 24)
             }
             .buttonStyle(.plain)
-            .help("新建空文件 (⌘N)")
+            .help("新建空标签页 (⌘T / ⌘N)")
 
             Spacer()
 
@@ -109,8 +120,8 @@ struct ContentView: View {
 
             Spacer()
 
-            if !state.currentFileKind.isImage {
-                // View mode switcher
+            // Split / Preview switcher is only needed for Markdown files
+            if state.currentFileKind.isMarkdown {
                 HStack(spacing: 2) {
                     ForEach(ViewMode.allCases) { mode in
                         Button {
@@ -138,17 +149,6 @@ struct ContentView: View {
                 )
 
                 Button {
-                    state.formatCurrentCode()
-                } label: {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color(white: 0.68))
-                        .frame(width: 26, height: 24)
-                }
-                .buttonStyle(.plain)
-                .help("格式化代码 / 文档 (⇧⌥F)")
-
-                Button {
                     state.isWidthPopoverPresented.toggle()
                 } label: {
                     Image(systemName: "arrow.left.and.right")
@@ -165,6 +165,19 @@ struct ContentView: View {
                 .popover(isPresented: $state.isWidthPopoverPresented, arrowEdge: .bottom) {
                     widthControlPopover
                 }
+            }
+
+            if !state.currentFileKind.isImage {
+                Button {
+                    state.formatCurrentCode()
+                } label: {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(white: 0.68))
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(.plain)
+                .help("格式化代码 / 文档 (⇧⌥F)")
             }
 
             Button {
@@ -196,10 +209,115 @@ struct ContentView: View {
         .background(Color(red: 0.102, green: 0.104, blue: 0.114)) // #1A1A1D
     }
 
+    // MARK: - Multi-Tab Bar
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(state.tabs) { tab in
+                        tabItemView(tab)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+            }
+
+            Button {
+                state.newDocument()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(white: 0.58))
+                    .frame(width: 26, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("新建空标签页 (⌘T)")
+            .padding(.trailing, 6)
+        }
+        .frame(height: 32)
+        .background(Color(red: 0.078, green: 0.080, blue: 0.090)) // #141417
+    }
+
+    private func tabItemView(_ tab: DocumentTab) -> some View {
+        let isActive = (tab.id == state.activeTabID)
+        return HStack(spacing: 6) {
+            Image(systemName: tabIconName(for: tab.fileKind))
+                .font(.system(size: 10.5))
+                .foregroundStyle(tabIconColor(for: tab.fileKind, active: isActive))
+
+            Text(tab.displayName)
+                .font(.system(size: 11.5, weight: isActive ? .medium : .regular))
+                .foregroundStyle(isActive ? Color.white : Color(white: 0.62))
+                .lineLimit(1)
+
+            if tab.isDirty && !tab.fileKind.isImage {
+                Circle()
+                    .fill(Color(red: 0.478, green: 0.635, blue: 0.969))
+                    .frame(width: 5.5, height: 5.5)
+            }
+
+            Button {
+                state.closeTab(tab.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundStyle(isActive ? Color(white: 0.62) : Color(white: 0.42))
+                    .frame(width: 15, height: 15)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("关闭标签页 (⌘W)")
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 6)
+        .frame(height: 24)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isActive ? Color(red: 0.145, green: 0.153, blue: 0.180) : Color.white.opacity(0.03))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(
+                            isActive ? Color(red: 0.478, green: 0.635, blue: 0.969).opacity(0.35) : Color.clear,
+                            lineWidth: 1
+                        )
+                )
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            state.selectTab(tab.id)
+        }
+    }
+
+    private func tabIconName(for kind: FileKind) -> String {
+        switch kind {
+        case .markdown: return "doc.richtext"
+        case .image: return "photo"
+        case .code: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    private func tabIconColor(for kind: FileKind, active: Bool) -> Color {
+        if active {
+            return Color(red: 0.478, green: 0.635, blue: 0.969)
+        }
+        switch kind {
+        case .markdown: return Color(white: 0.50)
+        case .image: return Color(red: 0.59, green: 0.76, blue: 0.47).opacity(0.75)
+        case .code: return Color(red: 0.88, green: 0.73, blue: 0.48).opacity(0.75)
+        }
+    }
+
+    // MARK: - Workspace Area
+
     @ViewBuilder
     private var workspaceArea: some View {
         if state.currentFileKind.isImage, let url = state.currentFileURL {
             ImagePreviewView(url: url, state: state)
+        } else if state.currentFileKind.isCode {
+            // 代码文件默认单栏原生语法高亮编辑，无需左右分栏
+            editorPane
         } else {
             switch state.viewMode {
             case .editorOnly:
@@ -223,14 +341,16 @@ struct ContentView: View {
                 get: { state.text },
                 set: { state.updateText($0) }
             ),
+            tabID: state.activeTabID,
+            fileKind: state.currentFileKind,
             formatAction: state.pendingFormatAction,
             formatRequestID: state.formatRequestID,
             onScroll: { fraction in
                 state.scrollFraction = fraction
             },
             onFileDrop: { urls in
-                if let first = urls.first {
-                    state.handleOpen(url: first)
+                for url in urls {
+                    state.handleOpen(url: url)
                 }
             }
         )
@@ -349,7 +469,7 @@ struct ContentView: View {
             Text(state.currentFileKind.displayLabel)
                 .foregroundStyle(Color(red: 0.478, green: 0.635, blue: 0.969).opacity(0.85))
 
-            if !state.currentFileKind.isImage {
+            if state.currentFileKind.isMarkdown {
                 Button {
                     state.isWidthPopoverPresented.toggle()
                 } label: {
@@ -358,7 +478,9 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 .help("点击调整预览行宽")
+            }
 
+            if !state.currentFileKind.isImage {
                 Text("\(state.lineCount) 行")
                 Text("\(state.wordCount) 字")
                 Text("\(state.characterCount) 字符")
@@ -372,13 +494,14 @@ struct ContentView: View {
     }
 
     private func handleDropProviders(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: URL.self) }) else {
-            return false
-        }
-        _ = provider.loadObject(ofClass: URL.self) { url, _ in
-            if let url = url {
-                DispatchQueue.main.async {
-                    state.handleOpen(url: url)
+        let matching = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        guard !matching.isEmpty else { return false }
+        for provider in matching {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url = url {
+                    DispatchQueue.main.async {
+                        state.handleOpen(url: url)
+                    }
                 }
             }
         }
