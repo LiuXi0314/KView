@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct KMarkApp: App {
+struct KViewApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
 

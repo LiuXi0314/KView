@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="KMark"
+APP_NAME="KView"
 APP_BUNDLE="$PROJECT_DIR/${APP_NAME}.app"
 CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -38,15 +38,15 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
-    <string>KMark</string>
+    <string>KView</string>
     <key>CFBundleIdentifier</key>
-    <string>com.kzy.kmark</string>
+    <string>com.kzy.kview</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>KMark</string>
+    <string>KView</string>
     <key>CFBundleDisplayName</key>
-    <string>KMark</string>
+    <string>KView</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -63,7 +63,7 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
     <array>
         <dict>
             <key>CFBundleTypeName</key>
-            <string>Markdown Document</string>
+            <string>Supported Document</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>LSHandlerRank</key>
@@ -72,6 +72,8 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
             <array>
                 <string>net.daringfireball.markdown</string>
                 <string>public.plain-text</string>
+                <string>public.source-code</string>
+                <string>public.image</string>
             </array>
         </dict>
     </array>

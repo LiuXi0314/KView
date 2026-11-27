@@ -2,16 +2,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "KMark",
+    name: "KView",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "KMark", targets: ["KMark"])
+        .executable(name: "KView", targets: ["KView"])
     ],
     targets: [
         .executableTarget(
-            name: "KMark",
+            name: "KView",
             path: "Sources"
         )
     ]
